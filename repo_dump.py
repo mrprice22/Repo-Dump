@@ -21,6 +21,22 @@ def is_git_ignored(root_path: Path, file_path: Path) -> bool:
         return False
 
 
+def is_manually_ignored(root_path: Path, file_path: Path, ignore_patterns: list) -> bool:
+    """
+    Returns True if the file matches any of the user-supplied ignore patterns.
+    Patterns are matched against the relative path from root and support globs.
+    """
+    relative_path = file_path.relative_to(root_path)
+    for pattern in ignore_patterns:
+        # Match against relative path string (e.g. "config/local.py")
+        if relative_path.match(pattern):
+            return True
+        # Also allow matching by filename only (e.g. "secrets.json")
+        if Path(pattern).name == relative_path.name and "/" not in pattern and "\\" not in pattern:
+            return True
+    return False
+
+
 def generate_tree(root_path: Path):
     """
     Yields all directories and files recursively.
@@ -49,6 +65,16 @@ def main():
         default="RepoDump.md",
         help='Output markdown file (default: "RepoDump.md")',
     )
+    parser.add_argument(
+        "--ignore",
+        nargs="+",
+        default=[],
+        help=(
+            "Specific files or glob patterns to ignore, even if they match --extensions "
+            "and are not in .gitignore. Matched against the relative path from root. "
+            "Examples: secrets.json  config/local.py  '**/*_test.py'  'tests/*'"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -57,6 +83,8 @@ def main():
     print("Resolved output path:", output_path)
     print(f"Scanning: {root_path}")
     print(f"Writing: {output_path}")
+    if args.ignore:
+        print(f"Ignoring patterns: {args.ignore}")
 
     with open(output_path, "w", encoding="utf-8") as out:
         out.write(f"# Repository Dump\n\n")
@@ -85,6 +113,10 @@ def main():
                 continue
 
             if is_git_ignored(root_path, path):
+                continue
+
+            if is_manually_ignored(root_path, path, args.ignore):
+                print(f"  Skipping (--ignore): {path.relative_to(root_path)}")
                 continue
 
             relative = path.relative_to(root_path)
